@@ -1,0 +1,23 @@
+[Unit]
+Description=Deploy webhook (multi-projets)
+After=network.target docker.service
+Requires=docker.service
+
+[Service]
+Type=simple
+User=deploy
+WorkingDirectory=/opt/deploy-webhook
+EnvironmentFile=/opt/deploy-webhook/.env
+ExecStart=/usr/bin/node /opt/deploy-webhook/webhook.js
+Restart=on-failure
+RestartSec=5
+
+# Durcissement : ajouter le dossier de chaque projet déployé (SITE_DIR de
+# projects.json) à ReadWritePaths pour que le service puisse y faire
+# git reset --hard et lancer docker compose.
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/opt/deploy-webhook /opt/artefable
+
+[Install]
+WantedBy=multi-user.target

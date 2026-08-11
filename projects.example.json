@@ -1,0 +1,9 @@
+[
+  {
+    "slug": "artefable",
+    "secretEnv": "ARTEFABLE_WEBHOOK_SECRET",
+    "siteDir": "/opt/artefable",
+    "branch": "main",
+    "deployCmd": "docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d"
+  }
+]
