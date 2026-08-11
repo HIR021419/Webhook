@@ -14,10 +14,13 @@ RestartSec=5
 
 # Durcissement : ajouter le dossier de chaque projet déployé (SITE_DIR de
 # projects.json) à ReadWritePaths pour que le service puisse y faire
-# git reset --hard et lancer docker compose.
+# git reset --hard et lancer docker compose. ATTENTION : chaque chemin
+# listé ici doit déjà exister sur le disque, sinon systemd échoue au
+# démarrage avec "226/NAMESPACE" (il ne peut pas monter le sandbox).
+# N'ajouter un projet ici qu'une fois son dossier réellement cloné.
 NoNewPrivileges=true
 ProtectSystem=strict
-ReadWritePaths=/opt/deploy-webhook /opt/artefable
+ReadWritePaths=/opt/deploy-webhook
 
 [Install]
 WantedBy=multi-user.target

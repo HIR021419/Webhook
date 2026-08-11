@@ -27,7 +27,27 @@ sudo useradd -r -m -d /opt/deploy-webhook -s /usr/sbin/nologin deploy
 sudo usermod -aG docker deploy   # si les deployCmd utilisent docker
 ```
 
-### 2. Ce repo
+### 2. Clé SSH pour cloner les repos privés
+
+Sur un VPS neuf, `git clone git@github.com:...` échoue avec
+`Permission denied (publickey)` tant qu'aucune clé n'est connue de
+GitHub. Générer une clé et l'ajouter en **Deploy Key** (lecture seule,
+limitée à un seul repo — pas une clé de compte) sur chaque repo à
+cloner :
+
+```bash
+sudo ssh-keygen -t ed25519 -C "vps-deploy-webhook" -f /root/.ssh/id_ed25519 -N ""
+sudo cat /root/.ssh/id_ed25519.pub
+```
+
+Coller la clé publique sur GitHub : repo concerné → Settings → Deploy
+keys → Add deploy key. Vérifier ensuite :
+
+```bash
+sudo ssh -T git@github.com
+```
+
+### 3. Ce repo
 
 ```bash
 sudo git clone <url-de-ce-repo> /opt/deploy-webhook
@@ -44,7 +64,7 @@ sudo cp projects.example.json projects.json
 sudo chown -R deploy:deploy /opt/deploy-webhook
 ```
 
-### 3. Service systemd
+### 4. Service systemd
 
 ```bash
 sudo cp deploy-webhook.service /etc/systemd/system/
@@ -59,13 +79,13 @@ Vérifier que ça écoute :
 curl http://localhost:9000/health   # doit répondre "ok"
 ```
 
-### 4. Pare-feu
+### 5. Pare-feu
 
 ```bash
 sudo ufw allow 9000/tcp
 ```
 
-### 5. Configurer le webhook côté GitHub (pour chaque projet)
+### 6. Configurer le webhook côté GitHub (pour chaque projet)
 
 Repo du projet → Settings → Webhooks → Add webhook :
 
@@ -80,12 +100,34 @@ GitHub envoie un `ping` immédiatement après la création — la réponse
 
 ## Ajouter un nouveau projet
 
-1. Ajouter une entrée dans `projects.json` (nouveau `slug`).
-2. Ajouter le secret correspondant dans `.env`.
-3. Créer le webhook côté GitHub avec l'URL `/webhook/<nouveau-slug>`.
+1. Cloner le repo du projet en tant que `ubuntu` (pas `root` — voir
+   pourquoi plus bas), dans un dossier où `ubuntu` a le droit d'écrire :
+   `git clone git@github.com:<toi>/<projet>.git ~/<projet>`
+2. Le déplacer vers son emplacement final et **le donner à `deploy`** :
+   ```bash
+   sudo mv ~/<projet> /opt/<projet>
+   sudo chown -R deploy:deploy /opt/<projet>
+   ```
+   Indispensable : le service tourne sous l'utilisateur `deploy`
+   (`User=deploy` dans `deploy-webhook.service`), donc `deploy.sh` fait
+   ses `git fetch`/`git reset --hard` en tant que `deploy`. Si le dossier
+   appartient à `root`, ces commandes échouent sans sudo — et on ne veut
+   surtout pas donner sudo à `deploy` (ça viderait l'intérêt d'avoir un
+   utilisateur dédié restreint).
+3. Ajouter la clé publique de `deploy`
+   (`sudo cat /home/deploy/.ssh/id_ed25519.pub`) comme Deploy Key sur ce
+   repo GitHub — c'est elle qui sert aux `git fetch` automatiques, pas la
+   clé personnelle utilisée pour le clone manuel à l'étape 1.
+4. Ajouter une entrée dans `projects.json` (nouveau `slug`, `siteDir`
+   pointant vers `/opt/<projet>`).
+5. Ajouter le secret correspondant dans `.env`.
+6. Ajouter le dossier à `ReadWritePaths` dans
+   `/etc/systemd/system/deploy-webhook.service`, puis
+   `sudo systemctl daemon-reload && sudo systemctl restart deploy-webhook`.
+7. Créer le webhook côté GitHub avec l'URL `/webhook/<nouveau-slug>`.
 
-Pas besoin de redémarrer le service : `projects.json` est relu à chaque
-requête.
+`projects.json` est relu à chaque requête — pas besoin de redémarrer le
+service pour lui seul, seulement si `ReadWritePaths` change (étape 6).
 
 ## Logs
 
