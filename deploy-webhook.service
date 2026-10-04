@@ -24,7 +24,7 @@ RestartSec=5
 NoNewPrivileges=true
 ProtectSystem=strict
 PrivateTmp=true
-ReadWritePaths=/opt/yannlab
+ReadWritePaths=/opt/yannlab /opt/deploy-webhook
 
 [Install]
 WantedBy=multi-user.target
