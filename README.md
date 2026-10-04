@@ -20,37 +20,47 @@ systemd indépendant sur le VPS.
 
 ## Mise en place sur le VPS
 
-### 1. Utilisateur dédié
+### 1. Clé SSH personnelle (pour les clones manuels)
+
+Sur un VPS neuf, `git clone git@github.com:...` échoue avec
+`Permission denied (publickey)` tant qu'aucune clé n'est connue de
+GitHub. Générer une clé avec l'utilisateur de ta session (`ubuntu` ou
+équivalent — **jamais avec `sudo`/`root`**, `sudo` n'a pas accès à ton
+agent SSH) :
+
+```bash
+ssh-keygen -t ed25519 -C "toi@example.com"
+```
+
+Ajouter la clé publique (`cat ~/.ssh/id_ed25519.pub`) sur GitHub : soit
+en Deploy Key sur le repo à cloner, soit comme clé de ton compte.
+Vérifier :
+
+```bash
+ssh -T git@github.com   # sans sudo
+```
+
+Cette clé ne sert qu'aux actions manuelles (clone initial). Les
+déploiements automatiques utilisent une clé séparée, propre à
+l'utilisateur `deploy` (étape 3).
+
+### 2. Utilisateur dédié
 
 ```bash
 sudo useradd -r -m -d /opt/deploy-webhook -s /usr/sbin/nologin deploy
 sudo usermod -aG docker deploy   # si les deployCmd utilisent docker
 ```
 
-### 2. Clé SSH pour cloner les repos privés
-
-Sur un VPS neuf, `git clone git@github.com:...` échoue avec
-`Permission denied (publickey)` tant qu'aucune clé n'est connue de
-GitHub. Générer une clé et l'ajouter en **Deploy Key** (lecture seule,
-limitée à un seul repo — pas une clé de compte) sur chaque repo à
-cloner :
-
-```bash
-sudo ssh-keygen -t ed25519 -C "vps-deploy-webhook" -f /root/.ssh/id_ed25519 -N ""
-sudo cat /root/.ssh/id_ed25519.pub
-```
-
-Coller la clé publique sur GitHub : repo concerné → Settings → Deploy
-keys → Add deploy key. Vérifier ensuite :
-
-```bash
-sudo ssh -T git@github.com
-```
+⚠️ Le `-d /opt/deploy-webhook` fait de ce dossier le `$HOME` de
+`deploy`. Toute clé SSH pour cet utilisateur doit donc vivre dans
+`/opt/deploy-webhook/.ssh/` — **pas** `/home/deploy/.ssh/`, qui n'est
+pas son vrai home et sera ignoré par SSH.
 
 ### 3. Ce repo
 
 ```bash
-sudo git clone <url-de-ce-repo> /opt/deploy-webhook
+git clone git@github.com:<toi>/Webhook.git ~/deploy-webhook   # avec la clé de l'étape 1, sans sudo
+sudo rsync -a ~/deploy-webhook/ /opt/deploy-webhook/
 cd /opt/deploy-webhook
 sudo npm install --omit=dev
 sudo cp .env.example .env
@@ -62,6 +72,23 @@ sudo cp projects.example.json projects.json
 
 ```bash
 sudo chown -R deploy:deploy /opt/deploy-webhook
+```
+
+Génère ensuite la clé dédiée à `deploy`, dans son vrai home
+(`/opt/deploy-webhook`, pas `/home/deploy`) :
+
+```bash
+sudo -u deploy ssh-keygen -t ed25519 -C "vps-deploy-webhook" -f /opt/deploy-webhook/.ssh/id_ed25519 -N ""
+sudo cat /opt/deploy-webhook/.ssh/id_ed25519.pub
+```
+
+C'est cette clé (pas celle de l'étape 1) qu'il faut ajouter en Deploy
+Key sur chaque repo que `deploy` doit `git fetch` automatiquement —
+chaque projet listé dans `projects.json`, et ce repo Webhook lui-même
+si tu veux que `deploy` puisse le mettre à jour. Vérifier :
+
+```bash
+sudo -u deploy ssh -T git@github.com
 ```
 
 ### 4. Service systemd
@@ -115,9 +142,10 @@ GitHub envoie un `ping` immédiatement après la création — la réponse
    surtout pas donner sudo à `deploy` (ça viderait l'intérêt d'avoir un
    utilisateur dédié restreint).
 3. Ajouter la clé publique de `deploy`
-   (`sudo cat /home/deploy/.ssh/id_ed25519.pub`) comme Deploy Key sur ce
-   repo GitHub — c'est elle qui sert aux `git fetch` automatiques, pas la
-   clé personnelle utilisée pour le clone manuel à l'étape 1.
+   (`sudo cat /opt/deploy-webhook/.ssh/id_ed25519.pub` — son vrai home,
+   pas `/home/deploy`) comme Deploy Key sur ce repo GitHub — c'est elle
+   qui sert aux `git fetch` automatiques, pas la clé personnelle
+   utilisée pour le clone manuel à l'étape 1.
 4. Ajouter une entrée dans `projects.json` (nouveau `slug`, `siteDir`
    pointant vers `/opt/<projet>`).
 5. Ajouter le secret correspondant dans `.env`.
